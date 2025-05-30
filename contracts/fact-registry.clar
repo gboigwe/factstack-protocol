@@ -1,5 +1,4 @@
 ;; Decentralized Fact Verification Protocol - Complete Contract
-;; Commit 5: Final version with utilities, search, and statistics
 
 ;; Constants
 (define-constant contract-owner tx-sender)

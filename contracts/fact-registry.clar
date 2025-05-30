@@ -1,5 +1,5 @@
-;; Decentralized Fact Verification Protocol - Validation System
-;; Commit 3: Add comprehensive input validation and duplicate prevention
+;; Decentralized Fact Verification Protocol - Admin and Verification
+;; Commit 4: Add admin functions, verification data, and fee system
 
 ;; Constants
 (define-constant contract-owner tx-sender)
@@ -7,7 +7,10 @@
 (define-constant err-invalid-claim (err u101))
 (define-constant err-claim-exists (err u102))
 (define-constant err-claim-not-found (err u103))
+(define-constant err-contract-paused (err u105))
 (define-constant err-invalid-input (err u106))
+(define-constant err-invalid-status (err u107))
+(define-constant err-invalid-fee (err u108))
 
 ;; Input validation constants
 (define-constant max-claim-length u500)
@@ -15,9 +18,12 @@
 (define-constant max-source-length u200)
 (define-constant max-ipfs-length u100)
 (define-constant max-sources-count u5)
+(define-constant max-fee u100000000) ;; 100 STX max fee
 
 ;; Data Variables
 (define-data-var claim-counter uint u0)
+(define-data-var submission-fee uint u1000000) ;; 1 STX in microSTX
+(define-data-var contract-paused bool false)
 
 ;; Claim Status Enumeration
 (define-constant status-pending u0)
@@ -25,7 +31,7 @@
 (define-constant status-disputed u2)
 (define-constant status-rejected u3)
 
-;; Data Maps
+;; Enhanced Data Maps with verification data
 (define-map claims
   { claim-id: uint }
   {
@@ -35,7 +41,10 @@
     sources: (list 5 (string-ascii 200)),
     ipfs-hash: (string-ascii 100),
     timestamp: uint,
-    status: uint
+    status: uint,
+    verification-score: uint,
+    stake-total: uint,
+    verifier-count: uint
   }
 )
 
@@ -86,6 +95,21 @@
 
 (define-private (validate-ipfs-hash (hash (string-ascii 100)))
   (<= (len hash) max-ipfs-length)
+)
+
+(define-private (validate-status (status uint))
+  (<= status u3)
+)
+
+(define-private (validate-fee (fee uint))
+  (<= fee max-fee)
+)
+
+(define-private (validate-claim-id (claim-id uint))
+  (and 
+    (> claim-id u0)
+    (<= claim-id (var-get claim-counter))
+  )
 )
 
 ;; Helper Functions
@@ -151,11 +175,19 @@
   )
 )
 
+(define-read-only (get-submission-fee)
+  (var-get submission-fee)
+)
+
 (define-read-only (get-total-claims)
   (var-get claim-counter)
 )
 
-;; Enhanced claim submission with full validation
+(define-read-only (is-contract-paused)
+  (var-get contract-paused)
+)
+
+;; Public Functions
 (define-public (submit-claim 
   (claim-text (string-ascii 500))
   (category (string-ascii 50))
@@ -164,7 +196,11 @@
 )
   (let (
     (claim-id (+ (var-get claim-counter) u1))
+    (current-fee (var-get submission-fee))
   )
+    ;; Check if contract is paused
+    (asserts! (not (var-get contract-paused)) err-contract-paused)
+    
     ;; Validate all inputs
     (asserts! (validate-claim-text claim-text) err-invalid-input)
     (asserts! (validate-category category) err-invalid-input)
@@ -178,7 +214,13 @@
       ;; Check for duplicate claims
       (asserts! (is-none (map-get? claim-by-hash { content-hash: content-hash })) err-claim-exists)
       
-      ;; Create the claim with validated inputs
+      ;; Handle submission fee
+      (if (> current-fee u0)
+        (try! (stx-transfer? current-fee tx-sender contract-owner))
+        true
+      )
+      
+      ;; Create the claim with validated inputs and verification data
       (map-set claims
         { claim-id: claim-id }
         {
@@ -188,7 +230,10 @@
           sources: sources,
           ipfs-hash: ipfs-hash,
           timestamp: stacks-block-height,
-          status: status-pending
+          status: status-pending,
+          verification-score: u0,
+          stake-total: u0,
+          verifier-count: u0
         }
       )
       
@@ -203,5 +248,83 @@
       ;; Return claim-id
       (ok claim-id)
     )
+  )
+)
+
+(define-public (update-claim-status (claim-id uint) (new-status uint))
+  ;; This will be called by the verification engine contract
+  (let (
+    (claim (unwrap! (get-claim claim-id) err-claim-not-found))
+  )
+    ;; Validate inputs
+    (asserts! (validate-claim-id claim-id) err-invalid-input)
+    (asserts! (validate-status new-status) err-invalid-status)
+    
+    ;; For now, only contract owner can update - later this will be restricted to verification contract
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    
+    ;; Update the claim with validated status
+    (ok (map-set claims
+      { claim-id: claim-id }
+      (merge claim { status: new-status })
+    ))
+  )
+)
+
+(define-public (update-verification-data 
+  (claim-id uint) 
+  (verification-score uint) 
+  (stake-total uint)
+  (verifier-count uint)
+)
+  ;; This will be called by the verification engine contract
+  (let (
+    (claim (unwrap! (get-claim claim-id) err-claim-not-found))
+  )
+    ;; Validate inputs
+    (asserts! (validate-claim-id claim-id) err-invalid-input)
+    (asserts! (<= verification-score u100) err-invalid-input) ;; Score should be 0-100
+    
+    ;; For now, only contract owner can update - later this will be restricted to verification contract
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    
+    ;; Update the claim verification data with validated inputs
+    (ok (map-set claims
+      { claim-id: claim-id }
+      (merge claim { 
+        verification-score: verification-score,
+        stake-total: stake-total,
+        verifier-count: verifier-count
+      })
+    ))
+  )
+)
+
+;; Admin Functions
+(define-public (set-submission-fee (new-fee uint))
+  (begin
+    ;; Validate inputs
+    (asserts! (validate-fee new-fee) err-invalid-fee)
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    
+    ;; Set the validated fee
+    (var-set submission-fee new-fee)
+    (ok true)
+  )
+)
+
+(define-public (pause-contract)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set contract-paused true)
+    (ok true)
+  )
+)
+
+(define-public (unpause-contract)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set contract-paused false)
+    (ok true)
   )
 )

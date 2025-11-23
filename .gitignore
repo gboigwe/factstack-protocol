@@ -18,11 +18,6 @@ frontend/*.tsbuildinfo
 frontend/vite.config.d.ts
 frontend/vite.config.js
 
-# Documentation files (except README.md)
-IMPLEMENTATION_SUMMARY.md
-QUICKSTART.md
-WALLET_INTEGRATION.md
-
 # Environment files (keep .env.example)
 .env
 .env.local

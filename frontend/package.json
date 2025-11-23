@@ -13,10 +13,11 @@
     "@stacks/connect": "^8.1.9",
     "@stacks/network": "^7.0.2",
     "@stacks/transactions": "^7.0.6",
+    "@tailwindcss/postcss": "^4.1.17",
+    "@walletconnect/qrcode-modal": "^1.8.0",
     "@walletconnect/sign-client": "^2.23.0",
     "@walletconnect/types": "^2.23.0",
     "@walletconnect/utils": "^2.23.0",
-    "@walletconnect/qrcode-modal": "^1.8.0",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

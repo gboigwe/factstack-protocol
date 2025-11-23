@@ -11,3 +11,14 @@ coverage
 *.info
 costs-reports.json
 node_modules
+
+# Frontend build artifacts
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local

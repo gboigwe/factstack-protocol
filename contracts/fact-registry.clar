@@ -49,7 +49,7 @@
 )
 
 (define-map claim-by-hash
-  { content-hash: (string-ascii 64) }
+  { content-hash: (buff 32) }
   { claim-id: uint }
 )
 
@@ -114,8 +114,15 @@
 
 ;; Helper Functions
 (define-private (generate-content-hash (claim-text (string-ascii 500)) (sources (list 5 (string-ascii 200))))
-  ;; Simple hash simulation - in production, use proper hashing
-  (int-to-ascii (+ (len claim-text) (* (len sources) u7)))
+  ;; Generate a content hash by concatenating claim text and first source, then hashing
+  ;; This creates a deterministic hash for duplicate detection
+  (let (
+    (first-source (default-to "" (element-at? sources u0)))
+    (combined-string (concat claim-text first-source))
+  )
+    ;; Use sha256 to generate a proper cryptographic hash
+    (sha256 (unwrap-panic (to-consensus-buff? combined-string)))
+  )
 )
 
 (define-private (add-claim-to-user (user principal) (claim-id uint))
@@ -154,7 +161,7 @@
   (map-get? claims { claim-id: claim-id })
 )
 
-(define-read-only (get-claim-by-hash (content-hash (string-ascii 64)))
+(define-read-only (get-claim-by-hash (content-hash (buff 32)))
   (match (map-get? claim-by-hash { content-hash: content-hash })
     entry (get-claim (get claim-id entry))
     none
